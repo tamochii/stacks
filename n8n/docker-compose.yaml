@@ -1,0 +1,22 @@
+services:
+  n8n:
+    image: n8nio/n8n
+    container_name: n8n
+    restart: always
+    ports:
+      - "${HOST_PORT}:5678"
+    environment:
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_RUNNERS_ENABLED=true
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://${SUBDOMAIN}.${DOMAIN_NAME}
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+      - TZ=${GENERIC_TIMEZONE}
+      - N8N_DEFAULT_LOCALE=zh-CN        
+    volumes:
+      - ${HOST_VOLUME_DATA}:/home/node/.n8n
+      - ${HOST_VOLUME_FILES}:/files
+      - ${HOST_VOLUME_LOCALES}:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist
+    network_mode: bridge
