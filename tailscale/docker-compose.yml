@@ -1,0 +1,19 @@
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: tailscale
+    hostname: nas-tailscale
+    network_mode: "host" # 必须使用 host 模式才能高效转发流量
+    privileged: true     # 必须开启特权模式以创建网络接口
+    cap_add:             # 添加必要的内核权限
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ${HOST_VOLUME_DATA}:/var/lib/tailscale # 持久化数据
+      - /dev/net/tun:/dev/net/tun             # 映射 TUN 设备
+    environment:
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+      - TS_ROUTES=192.168.1.0/24
+      - TS_EXTRA_ARGS=--advertise-exit-node
+    restart: always

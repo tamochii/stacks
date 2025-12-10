@@ -1,0 +1,188 @@
+version: '3'
+x-shared-env: &shared-api-worker-env
+  # [修复] 强制开启数据库自动迁移
+  MIGRATION_ENABLED: 'true'
+  # [修复] 存储配置
+  STORAGE_TYPE: ${STORAGE_TYPE:-opendal}
+  OPENDAL_SCHEME: ${OPENDAL_SCHEME:-fs}
+  OPENDAL_FS_ROOT: ${OPENDAL_FS_ROOT:-/app/api/storage}
+  
+  # [新增] 插件服务配置 (修复你当前报错的关键)
+  PLUGIN_DAEMON_URL: http://plugin_daemon:5002
+  PLUGIN_DAEMON_KEY: 'defaut-plugin-daemon-key-change-it-if-you-want'
+  INNER_API_KEY_FOR_PLUGIN: 'defaut-inner-api-key-change-it-if-you-want'
+
+  # 常规配置
+  CONSOLE_API_URL: ${CONSOLE_API_URL:-}
+  CONSOLE_WEB_URL: ${CONSOLE_WEB_URL:-}
+  SERVICE_API_URL: ${SERVICE_API_URL:-}
+  APP_API_URL: ${APP_API_URL:-}
+  APP_WEB_URL: ${APP_WEB_URL:-}
+  FILES_URL: ${FILES_URL:-}
+  DB_USERNAME: ${DB_USERNAME:-postgres}
+  DB_PASSWORD: ${DB_PASSWORD:-difyai123456}
+  DB_HOST: ${DB_HOST:-db_postgres}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_DATABASE: ${DB_DATABASE:-dify}
+  REDIS_HOST: ${REDIS_HOST:-redis}
+  REDIS_PORT: ${REDIS_PORT:-6379}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-difyai123456}
+  REDIS_USE_SSL: ${REDIS_USE_SSL:-false}
+  REDIS_DB: ${REDIS_DB:-0}
+  CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://:difyai123456@redis:6379/1}
+  CELERY_BACKEND: ${CELERY_BACKEND:-redis}
+  VECTOR_STORE: ${VECTOR_STORE:-weaviate}
+  WEAVIATE_ENDPOINT: ${WEAVIATE_ENDPOINT:-http://weaviate:8080}
+  WEAVIATE_API_KEY: ${WEAVIATE_API_KEY:-WVF5YThaHlkYwhGUSmCRgsX3tD5ngdN8pkih}
+  SECRET_KEY: ${SECRET_KEY:-sk-9f73s3ljTXVcMT3Blb3ljTqtsKiGHXVcMT3BlbkFJLK7U}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+services:
+  # 1. API
+  api:
+    image: langgenius/dify-api:1.10.1-fix.1
+    restart: always
+    environment:
+      <<: *shared-api-worker-env
+      MODE: api
+    ports:
+      - "10014:5001"
+    depends_on:
+      - db_postgres
+      - redis
+      - plugin_daemon
+    volumes:
+      - /vol1/1000/Docker/dify/storage:/app/api/storage
+    networks:
+      - ssrf_proxy_network
+      - default
+
+  # 2. Worker
+  worker:
+    image: langgenius/dify-api:1.10.1-fix.1
+    restart: always
+    environment:
+      <<: *shared-api-worker-env
+      MODE: worker
+    depends_on:
+      - db_postgres
+      - redis
+      - plugin_daemon
+    volumes:
+      - /vol1/1000/Docker/dify/storage:/app/api/storage
+    networks:
+      - ssrf_proxy_network
+      - default
+
+  # 3. Web
+  web:
+    image: langgenius/dify-web:1.10.1-fix.1
+    restart: always
+    environment:
+      CONSOLE_API_URL: ${CONSOLE_API_URL:-}
+      APP_API_URL: ${APP_API_URL:-}
+      MARKETPLACE_API_URL: ${MARKETPLACE_API_URL:-https://marketplace.dify.ai}
+      MARKETPLACE_URL: ${MARKETPLACE_URL:-https://marketplace.dify.ai}
+    ports:
+      - "10015:3000"
+
+  # 4. [新增] 插件守护进程
+  plugin_daemon:
+    image: langgenius/dify-plugin-daemon:0.4.1-local
+    restart: always
+    environment:
+      # 这里配置插件服务自己的变量
+      DB_DATABASE: dify_plugin
+      SERVER_PORT: 5002
+      SERVER_KEY: 'defaut-plugin-daemon-key-change-it-if-you-want'
+      DIFY_INNER_API_URL: http://api:5001
+      DIFY_INNER_API_KEY: 'defaut-inner-api-key-change-it-if-you-want'
+      PLUGIN_STORAGE_TYPE: local
+      PLUGIN_STORAGE_LOCAL_ROOT: /app/storage
+      # 数据库连接
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-difyai123456}
+      DB_HOST: ${DB_HOST:-db_postgres}
+      DB_PORT: ${DB_PORT:-5432}
+    volumes:
+      # 挂载到 dify/plugin 目录，避免权限问题
+      - /vol1/1000/Docker/dify/plugin:/app/storage
+    depends_on:
+      - db_postgres
+    networks:
+      - ssrf_proxy_network
+      - default
+
+  # 5. Postgres
+  db_postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-difyai123456}
+      POSTGRES_DB: ${DB_DATABASE:-dify}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - /vol1/1000/Docker/dify/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${DB_USERNAME:-postgres}", "-d", "${DB_DATABASE:-dify}"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  # 6. Redis
+  redis:
+    image: redis:6-alpine
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD:-difyai123456}
+    volumes:
+      - /vol1/1000/Docker/dify/redis:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-difyai123456} ping | grep -q PONG"]
+
+  # 7. Weaviate
+  weaviate:
+    image: semitechnologies/weaviate:1.27.0
+    restart: always
+    volumes:
+      - /vol1/1000/Docker/dify/weaviate:/var/lib/weaviate
+    environment:
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'false'
+      DEFAULT_VECTORIZER_MODULE: 'none'
+      AUTHENTICATION_APIKEY_ENABLED: 'true'
+      AUTHENTICATION_APIKEY_ALLOWED_KEYS: ${WEAVIATE_API_KEY:-WVF5YThaHlkYwhGUSmCRgsX3tD5ngdN8pkih}
+      AUTHENTICATION_APIKEY_USERS: 'hello@dify.ai'
+
+  # 8. SSRF Proxy
+  ssrf_proxy:
+    image: ubuntu/squid:latest
+    restart: always
+    environment:
+      HTTP_PORT: 3128
+      COREDUMP_DIR: /var/spool/squid
+    networks:
+      - ssrf_proxy_network
+      - default
+
+  # 9. Sandbox
+  sandbox:
+    image: langgenius/dify-sandbox:0.2.12
+    restart: always
+    environment:
+      API_KEY: dify-sandbox
+      GIN_MODE: release
+      WORKER_TIMEOUT: 15
+      ENABLE_NETWORK: 'true'
+      HTTP_PROXY: http://ssrf_proxy:3128
+      HTTPS_PROXY: http://ssrf_proxy:3128
+    networks:
+      - ssrf_proxy_network
+
+networks:
+  ssrf_proxy_network:
+    driver: bridge
+    internal: true
+  default:
+    driver: bridge
