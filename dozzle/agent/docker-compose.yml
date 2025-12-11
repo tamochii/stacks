@@ -6,3 +6,4 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - ${HOST_PORT}:7007
+    network_mode: bridge
