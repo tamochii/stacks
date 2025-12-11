@@ -4,5 +4,7 @@ services:
     container_name: frpc
     restart: always
     network_mode: host
+    environment:
+      - TZ=Asia/Shanghai
     volumes:
       - ${HOST_VOLUME}:/etc/frp/frpc.toml:ro
