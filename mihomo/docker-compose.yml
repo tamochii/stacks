@@ -1,0 +1,19 @@
+services:
+  mihomo:
+    image: metacubex/mihomo:latest
+    container_name: mihomo
+    restart: always
+    network_mode: bridge
+    ports:
+      - "${MIHOMO_PORT}:7890"
+      - "${CONTROL_PORT}:9090"
+    volumes:
+      - ${CONFIG_PATH}:/root/.config/mihomo
+
+  metacubexd:
+    image: ghcr.io/metacubex/metacubexd:latest
+    container_name: metacubexd
+    restart: always
+    network_mode: bridge
+    ports:
+      - "${METACUBEXD_PORT}:80"
